@@ -53,7 +53,7 @@ def main(_):
     tf.config.set_visible_devices([], "GPU")
 
     # setup wandb for logging
-    wandb.init(name="finetune_aloha", project="octo")
+    # wandb.init(name="finetune_aloha", project="octo")
 
     # load pre-trained model
     logging.info("Loading pre-trained model...")
@@ -187,10 +187,11 @@ def main(_):
         train_state, update_info = train_step(train_state, batch)
         if (i + 1) % 100 == 0:
             update_info = jax.device_get(update_info)
-            wandb.log(
-                flax.traverse_util.flatten_dict({"training": update_info}, sep="/"),
-                step=i,
-            )
+            update_info = flax.traverse_util.flatten_dict({"training": update_info}, sep="/")
+            # wandb.log(
+            #     flax.traverse_util.flatten_dict({"training": update_info}, sep="/"),
+            #     step=i,
+            # )
         if (i + 1) % 1000 == 0:
             # save checkpoint
             train_state.model.save_pretrained(step=i, checkpoint_path=FLAGS.save_dir)

@@ -199,6 +199,8 @@ def apply_frame_transforms(
         frame["task"] = fn(frame["task"])
         # observation is chunked -- apply fn along first axis
         frame["observation"] = dl.vmap(fn)(frame["observation"])
+        # next observation is chunked -- apply fn along first axis
+        frame["next_observation"] = dl.vmap(fn)(frame["next_observation"])
         return frame
 
     # decode + resize images (and depth images)
@@ -320,9 +322,11 @@ def make_dataset_from_rlds(
         - task:
             - language_instruction      # language instruction, present if `language_key` is provided
         - action                        # action vector
+        - reward                        # reward vector
+        - mask                          # terminal mask vector
         - dataset_name                  # name of the dataset
     """
-    REQUIRED_KEYS = {"observation", "action"}
+    REQUIRED_KEYS = {"observation", "action", "reward"}
 
     def restructure(traj):
         # apply a standardization function, if provided
@@ -371,6 +375,8 @@ def make_dataset_from_rlds(
             "observation": new_obs,
             "task": task,
             "action": tf.cast(traj["action"], tf.float32),
+            "reward": tf.cast(traj["reward"], tf.float32),
+            "mask": 1.0 - tf.cast(traj["reward"], tf.float32),
             "dataset_name": tf.repeat(name, traj_len),
         }
 

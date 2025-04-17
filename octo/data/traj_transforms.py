@@ -29,6 +29,8 @@ def chunk_act_obs(
     custom chunking schemes where an action may differ depending on which observation it is paired with.
     """
     traj_len = tf.shape(traj["action"])[0]
+    traj_observation = traj["observation"]
+    traj_action = traj["action"]
 
     # chunk observations into histories
     history_indices = tf.range(traj_len)[:, None] + tf.range(
@@ -40,9 +42,22 @@ def chunk_act_obs(
     history_indices = tf.maximum(history_indices, 0)
     # gather
     traj["observation"] = tf.nest.map_structure(
-        lambda x: tf.gather(x, history_indices), traj["observation"]
+        lambda x: tf.gather(x, history_indices), traj_observation
     )  # [traj_len, window_size, ...]
     traj["observation"]["timestep_pad_mask"] = timestep_pad_mask
+
+    # (chongyi): we want to add next observations and next actions
+    next_history_indices = tf.range(1, traj_len + 1)[:, None] + tf.range(
+        -window_size + 1, 1
+    )  # [traj_len, window_size]
+    next_timestep_pad_mask = next_history_indices >= 0
+    # repeat the last observation at the end of the trajectory rather than going out of bounds
+    next_history_indices = tf.minimum(
+        tf.maximum(next_history_indices, 0), traj_len - 1)
+    traj["next_observation"] = tf.nest.map_structure(
+        lambda x: tf.gather(x, next_history_indices), traj_observation
+    )  # [traj_len, window_size, ...]
+    traj["next_observation"]["timestep_pad_mask"] = next_timestep_pad_mask
 
     # first, chunk actions into `action_horizon` current + future actions
     if len(traj["action"].shape) == 2:
@@ -54,7 +69,15 @@ def chunk_act_obs(
         action_chunk_indices = tf.minimum(action_chunk_indices, traj_len - 1)
         # gather
         traj["action"] = tf.gather(
-            traj["action"], action_chunk_indices
+            traj_action, action_chunk_indices
+        )  # [traj_len, action_horizon, action_dim]
+
+        next_action_chunk_indices = tf.range(1, traj_len + 1)[:, None] + tf.range(
+            action_horizon
+        )  # [traj_len, action_horizon]
+        next_action_chunk_indices = tf.minimum(next_action_chunk_indices, traj_len - 1)
+        traj["next_action"] = tf.gather(
+            traj_action, next_action_chunk_indices
         )  # [traj_len, action_horizon, action_dim]
     else:
         # actions are pre-chunked, so we don't add a new axis
@@ -63,10 +86,15 @@ def chunk_act_obs(
                 f"action_horizon ({action_horizon}) is greater than the pre-chunked action dimension ({traj['action'].shape[1]})"
             )
         traj["action"] = traj["action"][:, :action_horizon]
+        assert "next_action" in traj
+        traj["next_action"] = traj["next_action"][:, :action_horizon]
 
     # then, add the history axis to actions
     traj["action"] = tf.gather(
         traj["action"], history_indices
+    )  # [traj_len, window_size, action_horizon, action_dim]
+    traj["next_action"] = tf.gather(
+        traj["next_action"], next_history_indices
     )  # [traj_len, window_size, action_horizon, action_dim]
 
     # finally, we deal with marking which actions are past the goal timestep (or final timestep if no goal)
@@ -94,6 +122,12 @@ def chunk_act_obs(
         else traj["action_pad_mask"][:, None, :],
         # [traj_len, window_size, action_horizon, 1]
         tf.logical_not(traj["observation"]["task_completed"])[:, :, :, None],
+    )
+    traj["next_action_pad_mask"] = tf.logical_and(
+        # [traj_len, window_size, action_horizon, 1]
+        tf.roll(traj["action_pad_mask"], shift=-1, axis=0),
+        # [1, window_size, action_horizon, 1]
+        tf.logical_not(traj["observation"]["task_completed"][-1])[None, :, :, None],
     )
 
     return traj

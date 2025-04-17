@@ -1,5 +1,8 @@
 """Defines dataset mixtures and weights for the Open X-Embodiment Datasets."""
 
+GOOGLE_ROBOT_MIX = [
+    ("fractal20220817_data", 1.0),
+]
 
 BRIDGE_MIX = [
     ("bridge_dataset", 1.0),
@@ -167,6 +170,7 @@ OXE_FULL_MIX = [
 ]
 
 OXE_NAMED_MIXES = {
+    "google_robot": GOOGLE_ROBOT_MIX,
     "bridge": BRIDGE_MIX,
     "rtx": RT_X_MIX,
     "rtx_franka": RT_X_MIX + OXE_FRANKA_MIX,
